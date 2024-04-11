@@ -1,6 +1,6 @@
 import { addPreSendListener, removePreSendListener } from "@api/MessageEvents";
 import definePlugin from "@utils/types";
-import { Unshave, UnshaveEntry } from "./unshave";
+import { unshave, UnshaveEntry, dictionary } from "./unshave";
 import { ApplicationCommandInputType, ApplicationCommandOptionType, Argument, CommandContext, CommandReturnValue, findOption, sendBotMessage } from "@api/Commands";
 import { Promisable } from "type-fest";
 import { DataStore } from "@api/index";
@@ -8,39 +8,42 @@ import { filters, waitFor } from "@webpack";
 import { createContext, useContext, useState } from '@webpack/common';
 import { Flex } from "@components/Flex";
 import { makeLazy } from "@utils/lazy";
+import { ReactElement } from "react";
 
-let unshave = new Unshave();
 const DATA_KEY = "unshave_CUSTOM";
 
 let getCustom = () => DataStore.get(DATA_KEY).then<UnshaveEntry[]>(v => v ?? []);
 let addCustom = async (entry: UnshaveEntry) => {
     const custom = await getCustom();
     custom.push(entry);
-    unshave.entries.push(entry);
+    dictionary.push(entry);
     DataStore.set(DATA_KEY, custom);
     return custom;
 };
 let removeCustom = async (entry: UnshaveEntry) => {
     const custom = await getCustom();
-    let idx = unshave.entries.findIndex((v) => v.shavian == entry.shavian && v.latin == entry.latin);
-    unshave.entries.splice(idx, 1);
+    let idx = dictionary.findIndex((v) => v.shavian == entry.shavian && v.latin == entry.latin);
+    dictionary.splice(idx, 1);
     idx = custom.findIndex((v) => v.shavian == entry.shavian && v.latin == entry.latin);
     custom.splice(idx, 1);
     DataStore.set(DATA_KEY, custom);
     return custom;
 };
 
-let getContext = makeLazy(() => createContext({ original: "", translation: "" }));
+interface TranslationState {
+    original: string;
+    translation: string;
+    legacy_ranges: [number, number][];
+}
+
+let getContext = makeLazy(() => createContext({ original: "", translation: "", legacy_ranges: [] as [number, number][] } as TranslationState));
 waitFor(filters.componentByCode("renderAttachButton", "renderAppLauncherButton", "renderApplicationCommandIcon"), (m) => {
     let TranslationContext = getContext();
     let render_original = m.type.render;
     m.type.render = function (e: any) {
-        let [state, setState] = useState({ original: e.textValue, translation: "" });
+        let [state, setState] = useState(() => createState(e.textValue as string));
         if (e.textValue != state.original) {
-            setState({
-                original: e.textValue,
-                translation: unshave.process(e.textValue)[1],
-            });
+            setState(createState(e.textValue as string));
         }
         return <TranslationContext.Provider value={state}>
             {render_original(...arguments)}
@@ -128,7 +131,7 @@ export default definePlugin({
                     }
                     case "search": {
                         let query = findOption(args[0].options, "query", "!!!!!");
-                        let entries = unshave.entries
+                        let entries = dictionary
                             .filter(v => v.latin.includes(query) || v.shavian.includes(query))
                             .sort((a, b) =>
                                 a.latin.includes(query)
@@ -171,10 +174,9 @@ export default definePlugin({
     ],
 
     async start() {
-        await unshave.load();
-        unshave.entries.push(...(await getCustom()));
+        dictionary.push(...(await getCustom()));
         this.preSend = addPreSendListener((_, msg) => {
-            let [original, unshaved] = unshave.process(msg.content);
+            let { original, unshaved } = unshave(msg.content);
             if (unshaved !== original) {
                 msg.content = `${original.trim()}\n> ${unshaved.trim()}`;
             } else {
@@ -188,14 +190,35 @@ export default definePlugin({
     },
 
     addBars(bars: any[]) {
-        let state = useContext(getContext());
-        if (state.original == state.translation) {
+        let { original, translation, legacy_ranges } = useContext(getContext());
+        if (original == translation) {
             return;
+        }
+        let formatted: ReactElement[] = [];
+        let colorize = false;
+        let last_index = 0;
+        for (let end_index of [...legacy_ranges.flat(), translation.length]) {
+            formatted.push(
+                <span style={{ color: colorize ? "#faa" : undefined }}>
+                    {translation.substring(last_index, end_index)}
+                </span>
+            );
+            last_index = end_index;
+            colorize = !colorize;
         }
         bars.push(
             <Flex style={{ padding: "0.45rem 1rem", lineHeight: "16px", color: "white", gap: "1rem", alignItems: "center" }}>
-                <span>{state.translation}</span>
+                <span>{formatted}</span>
             </Flex>
         );
     }
 });
+
+function createState(text: string): TranslationState {
+    let { unshaved: translation, legacy_ranges } = unshave(text);
+    return {
+        original: text,
+        translation,
+        legacy_ranges
+    };
+}
