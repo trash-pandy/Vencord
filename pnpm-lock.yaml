@@ -1,5 +1,9 @@
 lockfileVersion: '6.0'
 
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
 patchedDependencies:
   eslint-plugin-path-alias@1.0.0:
     hash: m6sma4g6bh67km3q6igf6uxaja
@@ -56,6 +60,9 @@ devDependencies:
   '@types/react-dom':
     specifier: ^18.2.1
     version: 18.2.1
+  '@types/tsv':
+    specifier: ^0.2.4
+    version: 0.2.4
   '@types/yazl':
     specifier: ^2.4.2
     version: 2.4.2
@@ -611,6 +618,10 @@ packages:
 
   /@types/semver@7.3.13:
     resolution: {integrity: sha512-21cFJr9z3g5dW8B0CVI9g2O9beqaThGQ6ZFBqHfwhzLDKUxaqTIy3vnfah/UPkfOiF2pLq+tGz+W8RyCskuslw==}
+    dev: true
+
+  /@types/tsv@0.2.4:
+    resolution: {integrity: sha512-yP+y/Nz8dwvHD3UR3XprGp2Up0pA6fuq4f3kCoIPhYH4dzADBXnuM0BIYDkCok6b678zQhAWXS4vLcD5HGbjCg==}
     dev: true
 
   /@types/yauzl@2.10.0:
@@ -3464,7 +3475,3 @@ packages:
     name: gifenc
     version: 1.0.3
     dev: false
-
-settings:
-  autoInstallPeers: true
-  excludeLinksFromLockfile: false
