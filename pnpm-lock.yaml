@@ -114,6 +114,9 @@ devDependencies:
   stylelint-config-standard:
     specifier: ^33.0.0
     version: 33.0.0(stylelint@15.6.0)
+  tsv:
+    specifier: ^0.2.0
+    version: 0.2.0
   tsx:
     specifier: ^3.12.7
     version: 3.12.7
@@ -3228,6 +3231,10 @@ packages:
     dependencies:
       tslib: 1.14.1
       typescript: 5.0.4
+    dev: true
+
+  /tsv@0.2.0:
+    resolution: {integrity: sha512-GG6xbOP85giXXom0dS6z9uyDsxktznjpa1AuDlPrIXDqDnbhjr9Vk6Us8iz6U1nENL4CPS2jZDvIjEdaZsmc4Q==}
     dev: true
 
   /tsx@3.12.7:
