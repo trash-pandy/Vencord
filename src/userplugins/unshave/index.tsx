@@ -194,6 +194,7 @@ export default definePlugin({
         if (original == translation) {
             return;
         }
+
         let formatted: ReactElement[] = [];
         let colorize = false;
         let last_index = 0;
