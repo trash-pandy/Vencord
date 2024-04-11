@@ -48,9 +48,9 @@ export function unshave(text: string): { original: string, unshaved: string, leg
 
     let legacy_ranges = [] as [number, number][];
     let offset = 0;
-    unshaved = unshaved.replaceAll(/\0(.*)\0/g, (whole, text, index) => {
-        offset -= 2;
-        legacy_ranges.push([index, index + whole.length - offset]);
+    unshaved = unshaved.replaceAll(/\0(.*?)\0/g, (whole, text, index) => {
+        legacy_ranges.push([index - offset, index + text.length - offset]);
+        offset += 2;
         return text;
     });
 

@@ -110,10 +110,6 @@ function finalize(word: string): string {
     for (let [regex, replace] of regexs) {
         let old = word;
         word = word.replace(regex, replace);
-        if (word !== old) {
-            console.log(`${old} became ${word}`);
-            console.log(`${regex}: ${replace}`);
-        }
     }
 
     return prefix + word;
