@@ -1,7 +1,7 @@
 import { unshave as unshave_legacy } from "./unshave-legacy";
+import tsv from "tsv";
 
-let tsv = require("tsv");
-tsv.header = false;
+let tsv_parser = new tsv.Parser("\t", { header: false });
 
 export type UnshaveEntry = {
     shavian: string;
@@ -15,7 +15,7 @@ let split_regex = /([^\u{10450}-\u{1047f}]*)([\u{10450}-\u{1047f}]+)(?:\[([\w.,'
 (async function () {
     let res = await fetch("https://raw.githubusercontent.com/Shavian-info/readlex/main/kingsleyreadlexicon.tsv");
     let body = await res.text();
-    for (let data of tsv.parse(body)) {
+    for (let data of tsv_parser.parse(body)) {
         let latin = data[0];
         let shavian = data[1];
         let occurances = +data[4];
