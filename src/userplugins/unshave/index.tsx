@@ -1,6 +1,6 @@
 import { addPreSendListener, removePreSendListener } from "@api/MessageEvents";
-import definePlugin from "@utils/types";
-import { unshave, UnshaveEntry, dictionary } from "./unshave";
+import definePlugin, { OptionType } from "@utils/types";
+import { unshave, UnshaveEntry, dictionary, loadDictionary } from "./unshave";
 import { ApplicationCommandInputType, ApplicationCommandOptionType, Argument, CommandContext, CommandReturnValue, findOption, sendBotMessage } from "@api/Commands";
 import { Promisable } from "type-fest";
 import { DataStore } from "@api/index";
@@ -9,6 +9,7 @@ import { createContext, useContext, useState } from '@webpack/common';
 import { Flex } from "@components/Flex";
 import { makeLazy } from "@utils/lazy";
 import { ReactElement } from "react";
+import { definePluginSettings } from "@api/Settings";
 
 const DATA_KEY = "unshave_CUSTOM";
 
@@ -20,11 +21,11 @@ let addCustom = async (entry: UnshaveEntry) => {
     DataStore.set(DATA_KEY, custom);
     return custom;
 };
-let removeCustom = async (entry: UnshaveEntry) => {
+let removeCustom = async ({ shavian, latin }: Partial<UnshaveEntry>) => {
     const custom = await getCustom();
-    let idx = dictionary.findIndex((v) => v.shavian == entry.shavian && v.latin == entry.latin);
+    let idx = dictionary.findIndex(v => (shavian ? v.shavian.includes(shavian) : true) && (latin ? v.latin.includes(latin) : true));
     dictionary.splice(idx, 1);
-    idx = custom.findIndex((v) => v.shavian == entry.shavian && v.latin == entry.latin);
+    idx = custom.findIndex(v => (shavian ? v.shavian.includes(shavian) : true) && (latin ? v.latin.includes(latin) : true));
     custom.splice(idx, 1);
     DataStore.set(DATA_KEY, custom);
     return custom;
@@ -51,11 +52,38 @@ waitFor(filters.componentByCode("renderAttachButton", "renderAppLauncherButton",
     };
 });
 
+let settings = definePluginSettings({
+    enableTransliterationBar: {
+        type: OptionType.BOOLEAN,
+        description: "Enables the transliteration bar, which displays your message with any shavian text transliterated into latin.",
+        default: true,
+    },
+    enableSpellingHighlighting: {
+        type: OptionType.BOOLEAN,
+        description: "Enables bad spelling highlighting through the ReadLex dictionary. Add to it with the built-in commands.",
+        default: true,
+    },
+    dictionary: {
+        type: OptionType.STRING,
+        description: "Use a TSV dictionary in the same format as the ReadLex dictionary.",
+        default: "https://raw.githubusercontent.com/Shavian-info/readlex/main/kingsleyreadlexicon.tsv",
+        onChange(newUrl) {
+            (async function () {
+                await loadDictionary(newUrl);
+            })();
+        },
+    }
+});
+
 export default definePlugin({
     name: "Unshave",
-    description: "Unshave messages you send.",
+    description: "Transliterate latin messages you send into shavian script. Not the most accurate, but it's passable. " +
+        "If you don't like how a word is transliterated, you can overwrite it with /unshave add <shavian> <latin> or use a replacer. " +
+        "A replacer is of the form <shavian word>[<latin word>] and can be previewed with the transliteration bar. This plugin does " +
+        "not support hyphenated words, and the replacer does not support whitespace.",
     authors: [{ id: 193969178317815810n, name: "Trash Panda" }],
     dependencies: ["MessageEventsAPI"],
+    settings,
 
     commands: [
         {
@@ -84,20 +112,19 @@ export default definePlugin({
                 },
                 {
                     name: "remove",
-                    description: "Remove a transliteration for a string of shavian text",
+                    description: "Remove a transliteration for a string of shavian text " +
+                        "(NOTE: will not remove entries from the base dictionary, only entries that you have created yourself)",
                     type: ApplicationCommandOptionType.SUB_COMMAND,
                     options: [
                         {
                             name: "shavian",
                             description: "The shavian text to transliterate",
                             type: ApplicationCommandOptionType.STRING,
-                            required: true,
                         },
                         {
                             name: "latin",
                             description: "The latin text to transliterate to",
                             type: ApplicationCommandOptionType.STRING,
-                            required: true,
                         },
                     ],
                 },
@@ -124,19 +151,25 @@ export default definePlugin({
                         break;
                     }
                     case "remove": {
-                        let shavian = findOption(args[0].options, "shavian", "");
-                        let latin = findOption(args[0].options, "latin", "");
+                        let shavian = findOption(args[0].options, "shavian", undefined) as string | undefined;
+                        let latin = findOption(args[0].options, "latin", undefined) as string | undefined;
+                        if (shavian == undefined && latin == undefined) {
+                            sendBotMessage(ctx.channel.id, {
+                                content: "You need to use at least one option to remove a dictionary entry."
+                            });
+                        }
                         removeCustom({ shavian, latin, occurances: 0 });
                         break;
                     }
                     case "search": {
-                        let query = findOption(args[0].options, "query", "!!!!!");
+                        let query = findOption(args[0].options, "query", "");
                         let entries = dictionary
                             .filter(v => v.latin.includes(query) || v.shavian.includes(query))
                             .sort((a, b) =>
-                                a.latin.includes(query)
-                                    ? (a.latin.indexOf(query) - b.latin.indexOf(query))
-                                    : (a.shavian.indexOf(query) - b.shavian.indexOf(query)))
+                                a.latin == query || a.shavian == query ? -1 :
+                                    a.latin.includes(query)
+                                        ? (a.latin.indexOf(query) - b.latin.indexOf(query))
+                                        : (a.shavian.indexOf(query) - b.shavian.indexOf(query)))
                             .map(v => ({
                                 latin: v.latin.replace(query, "**" + query + "**"),
                                 shavian: v.shavian.replace(query, "**" + query + "**"),
@@ -174,6 +207,7 @@ export default definePlugin({
     ],
 
     async start() {
+        await loadDictionary(settings.store.dictionary);
         dictionary.push(...(await getCustom()));
         this.preSend = addPreSendListener((_, msg) => {
             let { original, unshaved } = unshave(msg.content);
@@ -190,22 +224,31 @@ export default definePlugin({
     },
 
     addBars(bars: any[]) {
+        let { enableTransliterationBar, enableSpellingHighlighting } = settings.use(["enableTransliterationBar", "enableSpellingHighlighting"]);
+        if (!enableTransliterationBar) {
+            return;
+        }
+
         let { original, translation, legacy_ranges } = useContext(getContext());
         if (original == translation) {
             return;
         }
 
         let formatted: ReactElement[] = [];
-        let colorize = false;
-        let last_index = 0;
-        for (let end_index of [...legacy_ranges.flat(), translation.length]) {
-            formatted.push(
-                <span style={{ color: colorize ? "#faa" : undefined }}>
-                    {translation.substring(last_index, end_index)}
-                </span>
-            );
-            last_index = end_index;
-            colorize = !colorize;
+        if (enableSpellingHighlighting) {
+            let colorize = false;
+            let last_index = 0;
+            for (let end_index of [...legacy_ranges.flat(), translation.length]) {
+                formatted.push(
+                    <span style={{ color: colorize ? "#faa" : undefined }}>
+                        {translation.substring(last_index, end_index)}
+                    </span>
+                );
+                last_index = end_index;
+                colorize = !colorize;
+            }
+        } else {
+            formatted = [<span>{translation}</span>];
         }
         bars.push(
             <Flex style={{ padding: "0.45rem 1rem", lineHeight: "16px", color: "white", gap: "1rem", alignItems: "center" }}>
