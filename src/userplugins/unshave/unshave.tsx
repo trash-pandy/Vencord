@@ -12,8 +12,8 @@ export type UnshaveEntry = {
 export let dictionary = new Array<UnshaveEntry>();
 let split_regex = /([^\u{10450}-\u{1047f}]*)([\u{10450}-\u{1047f}]+)(?:\[([\w.,']+)\])?([^\u{10450}-\u{1047f}]*)/gu;
 
-(async function () {
-    let res = await fetch("https://raw.githubusercontent.com/Shavian-info/readlex/main/kingsleyreadlexicon.tsv");
+export async function loadDictionary(url: string) {
+    let res = await fetch(url);
     let body = await res.text();
     for (let data of tsv_parser.parse(body)) {
         let latin = data[0];
@@ -24,7 +24,7 @@ let split_regex = /([^\u{10450}-\u{1047f}]*)([\u{10450}-\u{1047f}]+)(?:\[([\w.,'
             dictionary.push({ latin, shavian, occurances });
         }
     }
-})();
+}
 
 function searchDict(word: string): string | undefined {
     let matches = dictionary.filter(v => v.shavian == word);
