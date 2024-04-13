@@ -41,18 +41,20 @@ export function unshave(text: string): { original: string, unshaved: string, leg
         return pre + word + aff;
     });
 
-    let unshaved = text.replaceAll(split_regex,
-        (_, pre: string, word: string, repl: string | undefined, aff: string, index: number) => {
-            return pre + (repl ?? searchDict(word) ?? `\0${unshave_legacy(word)}\0`) + aff;
-        });
-
-    let legacy_ranges = [] as [number, number][];
     let offset = 0;
-    unshaved = unshaved.replaceAll(/\0(.*?)\0/g, (whole, text, index) => {
-        legacy_ranges.push([index - offset, index + text.length - offset]);
-        offset += 2;
-        return text;
-    });
+    let legacy_ranges = [] as [number, number][];
+    let unshaved = text.replaceAll(split_regex,
+        (match, pre: string, word: string, repl: string | undefined, aff: string, index: number) => {
+            let legacy = false;
+            let replacement = (repl ?? searchDict(word) ?? (legacy = true, unshave_legacy(word)));
+            let result = pre + replacement + aff;
+            if (legacy) {
+                let start = index + pre.length - offset;
+                legacy_ranges.push([start, start + replacement.length]);
+            }
+            offset += match.length - result.length;
+            return result;
+        });
 
     return { original, unshaved, legacy_ranges };
 }
