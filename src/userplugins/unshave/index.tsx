@@ -21,7 +21,7 @@ let addCustom = async (entry: UnshaveEntry) => {
     DataStore.set(DATA_KEY, custom);
     return custom;
 };
-let removeCustom = async ({ shavian, latin }: Partial<UnshaveEntry>) => {
+let removeCustom = async ({ shavian, latin }: Partial<Omit<UnshaveEntry, "occurances">>) => {
     const custom = await getCustom();
     let idx = dictionary.findIndex(v => (shavian ? v.shavian.includes(shavian) : true) && (latin ? v.latin.includes(latin) : true));
     dictionary.splice(idx, 1);
@@ -63,9 +63,19 @@ let settings = definePluginSettings({
         description: "Enables bad spelling highlighting through the ReadLex dictionary. Add to it with the built-in commands.",
         default: true,
     },
+    showOriginalShavian: {
+        type: OptionType.BOOLEAN,
+        description: "Show the original shavian text that you entered in the message output.",
+        default: true,
+    },
+    spoilerOutput: {
+        type: OptionType.BOOLEAN,
+        description: "Put a spoiler on the resulting transliteration in the message output.",
+        default: false,
+    },
     dictionary: {
         type: OptionType.STRING,
-        description: "Use a TSV dictionary in the same format as the ReadLex dictionary.",
+        description: "ReadLex-style TSV Dictionary",
         default: "https://raw.githubusercontent.com/Shavian-info/readlex/main/kingsleyreadlexicon.tsv",
         onChange(newUrl) {
             (async function () {
@@ -141,33 +151,45 @@ export default definePlugin({
                         }
                     ]
                 },
+                {
+                    name: "mydictionary",
+                    description: "Show your personal dictionary",
+                    type: ApplicationCommandOptionType.SUB_COMMAND,
+                    options: [
+                        {
+                            name: "page",
+                            description: "Which page of your dictionary to show",
+                            type: ApplicationCommandOptionType.NUMBER,
+                        },
+                    ],
+                },
             ],
             execute: function (args: Argument[], ctx: CommandContext): Promisable<void | CommandReturnValue> {
                 switch (args[0].name) {
                     case "add": {
-                        let shavian = findOption(args[0].options, "shavian", "");
-                        let latin = findOption(args[0].options, "latin", "");
+                        let shavian = findOption<string>(args[0].options, "shavian")!;
+                        let latin = findOption<string>(args[0].options, "latin")!;
                         addCustom({ shavian, latin, occurances: Number.MAX_SAFE_INTEGER });
                         break;
                     }
                     case "remove": {
-                        let shavian = findOption(args[0].options, "shavian", undefined) as string | undefined;
-                        let latin = findOption(args[0].options, "latin", undefined) as string | undefined;
+                        let shavian = findOption<string>(args[0].options, "shavian");
+                        let latin = findOption<string>(args[0].options, "latin");
                         if (shavian == undefined && latin == undefined) {
-                            sendBotMessage(ctx.channel.id, {
-                                content: "You need to use at least one option to remove a dictionary entry."
-                            });
+                            fancyBotMessage(ctx.channel.id, "𐑧𐑮𐑼 ||Error||", "𐑥𐑱𐑒 𐑖𐑫𐑼 𐑞𐑨𐑑 𐑿 𐑣𐑨𐑝 𐑿𐑟𐑛 𐑨𐑑 𐑤𐑰𐑕𐑑 𐑢𐑳𐑯 𐑪𐑐𐑖𐑩𐑯.\n||Make sure that you have used at least one option.||");
+                            break;
                         }
-                        removeCustom({ shavian, latin, occurances: 0 });
+                        removeCustom({ shavian, latin });
                         break;
                     }
                     case "search": {
-                        let query = findOption(args[0].options, "query", "");
+                        let query = findOption<string>(args[0].options, "query")!;
+                        let isLatin = false;
                         let entries = dictionary
-                            .filter(v => v.latin.includes(query) || v.shavian.includes(query))
+                            .filter(v => (isLatin = true, v.latin.includes(query)) || v.shavian.includes(query))
                             .sort((a, b) =>
                                 a.latin == query || a.shavian == query ? -1 :
-                                    a.latin.includes(query)
+                                    isLatin
                                         ? (a.latin.indexOf(query) - b.latin.indexOf(query))
                                         : (a.shavian.indexOf(query) - b.shavian.indexOf(query)))
                             .map(v => ({
@@ -180,15 +202,33 @@ export default definePlugin({
                             embeds: [
                                 {
                                     //@ts-ignore
-                                    title: `Dictionary search for ${query}`,
+                                    title: `𐑛𐑦𐑒𐑖𐑩𐑯𐑼𐑦 𐑕𐑻𐑗 𐑓 "${query}" ||Dictionary search for||`,
                                     description: entries.map(v => `${v.latin}: ${v.shavian}`).slice(0, 10).join("\n"),
                                     //@ts-ignore
                                     color: 0x7fd77f,
-                                    type: "rich"
+                                    type: "rich",
                                 }
-                            ]
+                            ],
+                            author: {
+                                bot: true,
+                                username: "𐑳𐑯𐑖𐑱𐑝 (Unshave)",
+                            },
                         });
 
+                        break;
+                    }
+                    case "mydictionary": {
+                        let page_number = findOption<number>(args[0].options, "page", 1);
+                        getCustom().then(entries => {
+                            let page_start = (page_number - 1) * 10;
+                            let page_end = Math.min(page_start + 10, entries.length);
+                            let page = entries.slice(page_start, page_end);
+                            let npages = Math.ceil(entries.length / 10);
+
+                            fancyBotMessage(ctx.channel.id, `𐑐𐑲𐑡 ${page_number}/${npages} (Page)`,
+                                page.map(v => `${v.shavian}: ${v.latin}`).join("\n")
+                            );
+                        });
                         break;
                     }
                 }
@@ -212,9 +252,16 @@ export default definePlugin({
         this.preSend = addPreSendListener((_, msg) => {
             let { original, unshaved } = unshave(msg.content);
             if (unshaved !== original) {
-                msg.content = `${original.trim()}\n> ${unshaved.trim()}`;
-            } else {
-                msg.content = unshaved;
+                let result = "";
+                if (settings.store.showOriginalShavian) {
+                    result += `${original.trim()}\n> `;
+                    if (settings.store.spoilerOutput) {
+                        unshaved = `||${unshaved.trim()}||`;
+                    }
+                }
+                result += unshaved;
+
+                msg.content = result;
             }
         });
     },
@@ -251,7 +298,7 @@ export default definePlugin({
             formatted = [<span>{translation}</span>];
         }
         bars.push(
-            <Flex style={{ padding: "0.45rem 1rem", lineHeight: "16px", color: "white", gap: "1rem", alignItems: "center" }}>
+            <Flex style={{ padding: "0.45rem 1rem", lineHeight: "1.5rem", color: "white", gap: "1rem", alignItems: "center" }}>
                 <span>{formatted}</span>
             </Flex>
         );
@@ -265,4 +312,23 @@ function createState(text: string): TranslationState {
         translation,
         legacy_ranges
     };
+}
+
+function fancyBotMessage(channel: string, title: string, message: string) {
+    sendBotMessage(channel, {
+        embeds: [
+            {
+                //@ts-ignore
+                title: title,
+                description: message,
+                //@ts-ignore
+                color: 0x7fd77f,
+                type: "rich",
+            }
+        ],
+        author: {
+            bot: true,
+            username: "𐑳𐑯𐑖𐑱𐑝 (Unshave)",
+        },
+    });
 }
